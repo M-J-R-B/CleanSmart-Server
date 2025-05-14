@@ -1,6 +1,12 @@
 const mongoose = require('mongoose');
 
 const taskGroupSchema = new mongoose.Schema({
+  _id: {
+    type: String,
+    default: function() {
+      return new mongoose.Types.ObjectId().toString();
+    }
+  },
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

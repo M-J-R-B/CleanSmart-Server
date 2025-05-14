@@ -6,7 +6,21 @@ const { sendPasswordResetEmail } = require('../services/emailService');
 exports.signup = async (req, res) => {
   try {
     const { fullName, email, password } = req.body;
-    console.log('Signup attempt:', { fullName, email });
+    console.log('Signup attempt - Request body:', req.body);
+    console.log('Signup data received:', { fullName, email, password: password ? 'provided' : 'missing' });
+
+    // Check if required fields are provided
+    if (!fullName || !email || !password) {
+      console.log('Signup error: Missing required fields:', { 
+        fullNameProvided: !!fullName, 
+        emailProvided: !!email, 
+        passwordProvided: !!password 
+      });
+      return res.status(400).json({
+        success: false,
+        message: 'All fields (fullName, email, password) are required'
+      });
+    }
 
     // Check if user already exists
     const existingUser = await User.findOne({ email });
@@ -36,7 +50,21 @@ exports.signup = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Signup error:', error);
+    console.error('Signup error - Exception:', error);
+    console.error('Signup error - Stack:', error.stack);
+    
+    if (error.name === 'ValidationError') {
+      console.error('Validation error:', error.errors);
+      return res.status(400).json({
+        success: false,
+        message: 'Validation error',
+        errors: Object.keys(error.errors).reduce((acc, key) => {
+          acc[key] = error.errors[key].message;
+          return acc;
+        }, {})
+      });
+    }
+    
     res.status(500).json({
       success: false,
       message: error.message
@@ -50,6 +78,17 @@ exports.login = async (req, res) => {
     const { email, password } = req.body;
     console.log('Login attempt for:', email);
 
+    if (!email || !password) {
+      console.log('Login error: Missing required fields:', {
+        emailProvided: !!email,
+        passwordProvided: !!password
+      });
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required'
+      });
+    }
+
     const user = await User.findOne({ email });
 
     if (!user) {
@@ -61,7 +100,9 @@ exports.login = async (req, res) => {
     }
 
     // Check password
+    console.log('Comparing password for user:', email);
     const isMatch = await user.comparePassword(password);
+    
     if (!isMatch) {
       console.log('Password mismatch for user:', email);
       return res.status(401).json({
@@ -70,6 +111,7 @@ exports.login = async (req, res) => {
       });
     }
 
+    console.log('Login successful for user:', email);
     res.status(200).json({
       success: true,
       user: {
@@ -82,7 +124,8 @@ exports.login = async (req, res) => {
     console.error('Login error:', error);
     res.status(500).json({
       success: false,
-      message: error.message
+      message: 'Login failed due to server error',
+      error: error.message
     });
   }
 };
@@ -405,5 +448,63 @@ exports.getResetPasswordPage = async (req, res) => {
         </body>
       </html>
     `);
+  }
+};
+
+// Delete Account Controller
+exports.deleteAccount = async (req, res) => {
+  try {
+    // The user is already authenticated via middleware
+    const user = req.user;
+    
+    if (!user) {
+      console.log('Delete account failed: No authenticated user found');
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required'
+      });
+    }
+    
+    // Optional: Add confirmation check
+    const { confirmation } = req.body;
+    if (confirmation !== 'DELETE') {
+      console.log('Delete account aborted: Missing confirmation code');
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide confirmation code to delete your account'
+      });
+    }
+    
+    const userId = user._id;
+    const userEmail = user.email;
+    
+    console.log(`Starting account deletion process for user: ${userEmail} (${userId})`);
+    
+    // 1. Find and delete all task groups associated with this user
+    const TaskGroup = require('../models/TaskGroup');
+    const deletedTaskGroups = await TaskGroup.deleteMany({ userId });
+    console.log(`Deleted ${deletedTaskGroups.deletedCount} task groups for user ${userId}`);
+    
+    // 2. Delete the user account
+    const deleteResult = await user.deleteOne();
+    
+    if (!deleteResult) {
+      throw new Error('Failed to delete user account');
+    }
+    
+    console.log(`Successfully deleted account for user: ${userEmail} (${userId})`);
+    
+    // Return success response
+    res.status(200).json({
+      success: true,
+      message: 'Your account has been successfully deleted'
+    });
+  } catch (error) {
+    console.error('Delete account error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete account due to server error',
+      error: error.message
+    });
   }
 }; 
