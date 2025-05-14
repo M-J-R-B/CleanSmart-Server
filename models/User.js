@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
-// const bcrypt = require('bcryptjs'); // No longer needed
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
   fullName: {
@@ -28,20 +29,63 @@ const userSchema = new mongoose.Schema({
 // Drop all indexes and create only email index
 userSchema.index({ email: 1 }, { unique: true });
 
-// REMOVE password hashing middleware
-// userSchema.pre('save', async function(next) {
-//   try {
-//     if (!this.isModified('password')) return next();
-//     const salt = await bcrypt.genSalt(10);
-//     this.password = await bcrypt.hash(this.password, salt);
-//     next();
-//   } catch (error) {
-//     next(error);
-//   }
-// });
+// Hash password before saving
+/* 
+userSchema.pre('save', async function(next) {
+  try {
+    // Only hash the password if it's modified (or new)
+    if (!this.isModified('password')) return next();
+    
+    console.log('Hashing password for user:', this.email);
+    
+    // Generate a salt
+    const salt = await bcrypt.genSalt(10);
+    
+    // Hash the password using the salt
+    const hashedPassword = await bcrypt.hash(this.password, salt);
+    
+    // Replace the plaintext password with the hashed one
+    this.password = hashedPassword;
+    
+    next();
+  } catch (error) {
+    console.error('Error hashing password:', error);
+    next(error);
+  }
+});
+*/
 
-// Plain text password comparison
+// Generate JWT for password reset
+userSchema.methods.generateResetToken = function() {
+  return jwt.sign(
+    { id: this._id, email: this.email },
+    process.env.JWT_SECRET || 'your-secret-key',
+    { expiresIn: '1h' }
+  );
+};
+
+// Verify password reset token
+userSchema.statics.verifyPasswordResetToken = function(token) {
+  try {
+    return jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+  } catch (error) {
+    return null;
+  }
+};
+
+// Compare password
 userSchema.methods.comparePassword = async function(candidatePassword) {
+  /* 
+  try {
+    // Use bcrypt to compare the provided password with the hashed password
+    return await bcrypt.compare(candidatePassword, this.password);
+  } catch (error) {
+    console.error('Error comparing passwords:', error);
+    return false;
+  }
+  */
+  
+  // Direct string comparison (for testing without hashing)
   return candidatePassword === this.password;
 };
 
